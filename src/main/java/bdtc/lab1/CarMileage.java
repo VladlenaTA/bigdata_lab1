@@ -32,7 +32,7 @@ public class CarMileage {
         spark.sparkContext().setLogLevel("INFO");
 
         // Load input data from file
-        JavaRDD<String> inputRDD = spark.read().textFile("input2/car_data").javaRDD();
+        JavaRDD<String> inputRDD = spark.read().textFile(args[0]).javaRDD();
 
         // Mapping data to pairs (carModel, mileage)
         JavaPairRDD<String, Double> mappedRDD = inputRDD.flatMapToPair(line -> {
@@ -79,7 +79,7 @@ public class CarMileage {
         JavaPairRDD<String, Double> averageRDD = reducedRDD.mapValues(t -> t._1() / t._2());
 
         // Save results to output file
-        averageRDD.saveAsTextFile("output");
+        averageRDD.saveAsTextFile(args[1]);
 
         // Stop Spark session
         //spark.stop();
