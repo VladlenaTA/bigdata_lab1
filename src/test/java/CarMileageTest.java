@@ -1,53 +1,87 @@
 import bdtc.lab1.CarMileage;
-import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.sql.SparkSession;
-import scala.Tuple2;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
 
+import java.io.File;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
+
+import static org.junit.Assert.assertEquals;
 
 public class CarMileageTest {
-    public static void main(String[] args) {
-        SparkSession spark = SparkSession.builder()
-                .appName("CarMileageTest")
-                .master("local")
-                .getOrCreate();
 
-        // Create input data RDD
-        List<Tuple2<String, Double>> inputData = Arrays.asList(
-                new Tuple2<>("1", 10.5),
-                new Tuple2<>("2", 8.2),
-                new Tuple2<>("3", Double.NaN),
-                new Tuple2<>("4", 12.1),
-                new Tuple2<>("5", 9.8),
-                new Tuple2<>("6", 15.3)
-        );
-        JavaSparkContext javaSparkContext = JavaSparkContext.fromSparkContext(spark.sparkContext());
-        JavaRDD<Tuple2<String, Double>> inputRDD = javaSparkContext.parallelize(inputData);
+    private JavaSparkContext sc;
 
-        // Execute CarMileage code
-        CarMileage.main(new String[0]);
+    private String createdInput = "input2/car_data_test";
+    private String createdOutput = "output_test";
 
-        // Extract the average mileage results
-        JavaPairRDD<String, Double> averageRDD = spark.read().textFile("output").javaRDD()
-                .mapToPair(line -> {
-                    String[] parts = line.split(" ");
-                    return new Tuple2<>(parts[0], Double.parseDouble(parts[1]));
-                });
-
-        Map<String, Double> averageMileageMap = averageRDD.collectAsMap();
-
-        // Assert that the average mileages are calculated correctly
-        assert (averageMileageMap.get("Vesta") == 10.5);
-        assert (averageMileageMap.get("Matiz") == 8.2);
-        assert (averageMileageMap.get("Toyota") == 12.1);
-        assert (averageMileageMap.get("Honda") == 9.8);
-        assert (averageMileageMap.get("Nissan") == 15.3);
-
-        // Clean up
-        spark.stop();
+    @Before
+    public void setUp() {
+        sc = new JavaSparkContext("local", "CarMileageTest");
     }
+
+    @After
+    public void tearDown() {
+        deleteTempFiles();
+        sc.stop();
+    }
+
+    private void deleteTempFiles(){
+        deleteDirectory(new File(createdInput));
+        deleteDirectory(new File(createdOutput));
+    }
+
+    private static boolean deleteDirectory(File directory) {
+        if (directory.exists()) {
+            File[] files = directory.listFiles();
+
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isDirectory()) {
+                        // Рекурсивное удаление поддиректорий
+                        deleteDirectory(file);
+                    } else {
+                        // Удаление файлов в директории
+                        file.delete();
+                    }
+                }
+            }
+
+            // Удаление самой директории
+            return directory.delete();
+        }
+
+        return false;
+    }
+
+    @Test
+    public void testMain() {
+        // Create a sample input file with valid and invalid data
+        JavaRDD<String> inputRDD = sc.parallelize(Arrays.asList(
+                "1 10.0",
+                "2 15.0",
+                "3 invalid",  // Invalid data with non-numeric mileage
+                "6 20.0",
+                "7 30.0"     // Invalid data with unknown car model
+        ));
+        inputRDD.saveAsTextFile(createdInput);
+
+        // Call the main method with the test input file
+        String[] args = {createdInput, createdOutput};
+        CarMileage.main(args);
+
+        // Check the output file for the expected results
+        JavaRDD<String> outputRDD = sc.textFile(createdOutput);
+
+        // Check the expected results
+        List<String> expected = Arrays.asList("(Vesta,10.0)", "(Matiz,15.0)", "(Nissan,20.0)");
+        List<String> actual = outputRDD.collect();
+
+        assertEquals(expected, actual);
+    }
+
+
 }
